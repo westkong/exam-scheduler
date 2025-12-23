@@ -27,12 +27,14 @@ with st.sidebar:
 def load_data():
     try:
         data = conn.read(spreadsheet=SHEET_URL, ttl=0)
-        return data if data is not None else pd.DataFrame(columns=["owner", "subject", "date", "desc", "note"])
+        if data is None:
+            return pd.DataFrame(columns=["owner", "subject", "date", "desc", "note"])
+        return data
     except:
         return pd.DataFrame(columns=["owner", "subject", "date", "desc", "note"])
 
 all_df = load_data()
-my_df = all_df[all_df["owner"] == user_id].copy() if not all_df.empty and "owner" in all_df.columns else pd.DataFrame()
+my_df = all_df[all_df["owner"] == user_id].copy() if not all_df.empty and "owner" in all_df.columns else pd.DataFrame(columns=["owner", "subject", "date", "desc", "note"])
 
 # 6. 사이드바: 일정 추가
 with st.sidebar:
@@ -56,12 +58,22 @@ with tab1:
     if my_df.empty:
         st.info("등록된 일정이 없습니다.")
     else:
+        # 날짜 데이터 변환 및 정렬
         my_df['date_obj'] = pd.to_datetime(my_df['date']).dt.date
         for idx, row in my_df.sort_values('date_obj').iterrows():
             diff = (row['date_obj'] - date.today()).days
             d_text = f"D-{diff}" if diff > 0 else (":red[D-day]" if diff == 0 else f"D+{abs(diff)}")
             with st.expander(f"{d_text} | {row['subject']} ({row['date']})"):
                 st.write(f"내용: {row['desc']}")
-                st.write(f"메모: {row['note']}")
+                st.write(f"**메모:** {row['note']}")
                 if st.button("삭제", key=f"del_{idx}"):
                     conn.update(spreadsheet=SHEET_URL, data=all_df.drop(idx))
+                    st.cache_data.clear()
+                    st.rerun()
+
+with tab2:
+    # 연도와 월 선택 시 탭이 바뀌지 않도록 세션 유지
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        y_now = date.today().year
+        selected_year = st.
