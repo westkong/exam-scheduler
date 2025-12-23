@@ -5,22 +5,21 @@ from datetime import datetime, date
 
 # 1. 페이지 설정
 st.set_page_config(page_title="시험 일정 관리", page_icon="📅")
-st.title("📅 시험 일정 관리 (DB 연동 완료)")
+st.title("📅 시험 일정 관리 (구글 시트 연동)")
 
 # 2. 구글 시트 주소
-url = "https://docs.google.com/spreadsheets/d/1IsaTPRJ43OgkBlzcwGMXsG_tBElems60wlRtXktkk14/edit?gid=0#gid=0"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1IsaTPRJ43OgkBlzcwGMXsG_tBElems60wlRtXktkk14/edit?gid=0#gid=0"
 
 # 3. 연결 생성
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 4. 데이터 불러오기 (에러 방지를 위해 명시적으로 spreadsheet 전달)
+# 4. 데이터 불러오기 (에러 방지를 위해 가장 보수적인 방식으로 호출)
 def load_data():
-    # 데이터가 없을 때를 대비해 빈 데이터프레임 구조를 미리 잡습니다.
     try:
-        # 이 부분이 에러 지점이므로, 가장 안전한 방식으로 호출합니다.
-        data = conn.read(spreadsheet=url, usecols=[0,1,2,3], ttl=0)
-        return data
-    except:
+        # spreadsheet 인자를 명시적으로 전달하되, 쿼리를 붙여서 문자열임을 확실히 합니다.
+        return conn.read(spreadsheet=SHEET_URL, ttl=0)
+    except Exception:
+        # 시트가 아예 비어있거나 읽지 못할 경우를 대비한 기본값
         return pd.DataFrame(columns=["subject", "date", "desc", "note"])
 
 df = load_data()
@@ -33,7 +32,7 @@ with st.sidebar:
         exam_date = st.date_input("시험 날짜", min_value=date.today())
         desc = st.text_input("내용")
         note = st.text_area("메모")
-        submit = st.form_submit_button("저장하기")
+        submit = st.form_submit_button("구글 시트에 저장")
 
         if submit and subject:
             new_row = pd.DataFrame([{
@@ -42,20 +41,19 @@ with st.sidebar:
                 "desc": desc,
                 "note": note
             }])
-            # 기존 데이터와 합치기
             updated_df = pd.concat([df, new_row], ignore_index=True)
-            # 저장 시에도 주소를 명시적으로 전달
-            conn.update(spreadsheet=url, data=updated_df)
-            st.success("저장 성공!")
+            # 업데이트 시 주소를 명시적으로 지정하여 에러 방지
+            conn.update(spreadsheet=SHEET_URL, data=updated_df)
+            st.success("저장되었습니다!")
             st.rerun()
 
-# 6. 메인 화면 목록
-st.subheader("📋 전체 일정")
+# 6. 메인 화면: 일정 목록
+st.subheader("📋 전체 시험 일정")
 
 if df is None or df.empty:
-    st.info("등록된 일정이 없습니다. 사이드바에서 추가해 보세요.")
+    st.info("등록된 시험 일정이 없습니다.")
 else:
-    # 날짜 정렬
+    # 날짜 정렬 처리
     df['date_obj'] = pd.to_datetime(df['date']).dt.date
     df = df.sort_values(by='date_obj')
 
@@ -68,7 +66,8 @@ else:
             st.write(f"**내용:** {row['desc']}")
             st.write(f"**메모:** {row['note']}")
             if st.button("삭제", key=f"del_{idx}"):
-                # 삭제 후 업데이트
-                df_to_save = df.drop(idx).drop(columns=['date_obj'])
-                conn.update(spreadsheet=url, data=df_to_save)
+                df = df.drop(idx)
+                if 'date_obj' in df.columns:
+                    df = df.drop(columns=['date_obj'])
+                conn.update(spreadsheet=SHEET_URL, data=df)
                 st.rerun()
